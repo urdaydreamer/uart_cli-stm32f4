@@ -81,7 +81,7 @@ static Level1Command lvl1_commands[MAX_LEVEL1_COMMANDS] = {
     },
     {   .command_lvl1 = "info",
         .has_char = NO_CHAR,
-        .has_number = NO_NUM,
+        .has_number = HAS_NUM,
         .first_lvl_return_value = 50,
         .number_of_commands = 0,
         .level2Commands = NULL
@@ -152,6 +152,7 @@ static uint16_t parse_getnum(uint16_t lvl1_index, const char* user_command, uint
     {
         if (!user_command[user_index]) return 0; //В комманду с передаваемым номером он не был передан/передан неверно
         user_index++;   //Теперь user_command[user_index] ссылается на значение после точки
+        if (!user_command[user_index]) return 0; //После точки ничего не было передано
         if (user_command[user_index] == '0') return 0;   //Передали в неправильном формате. 0 не может идти первым.
         while(user_command[user_index] && user_command[user_index] != '.')
         {
@@ -294,27 +295,51 @@ int cli_parse_command(const char* user_command, uint8_t* number, uint16_t* value
     user_index = parse_lvl1(user_command, &lvl1_index);
     if (!user_index) return 0; //Неверная комманда первого уровня
     user_index--;              //Функция парсинга возвращает индекс на 1 больше.
-
     /* По итогу нашли user_index - место конца комманды / '.', а также lvl1_index - индекс первоуровневой комманды. */
 
-    if (lvl1_commands[lvl1_index].first_lvl_return_value && !user_command[user_index])
-        return lvl1_commands[lvl1_index].first_lvl_return_value;
-    //TODO: сделать обработку первоуровневой команды с
+
+    //Если команда первоуровневая
+    if (lvl1_commands[lvl1_index].first_lvl_return_value)
+    {
+        //Если команда не принимает номер
+        if (!(lvl1_commands[lvl1_index].has_char || lvl1_commands[lvl1_index].has_number))
+        {
+            //Если конец команды - все хорошо
+            if (!user_command[user_index])
+                return lvl1_commands[lvl1_index].first_lvl_return_value;
+            //Иначе - все плохо. Мы передали какие - то аргументы в команду, которая их не принимает
+            else
+                return 0;
+        }
+    }
+
+
+    //Получаем значение индекса, который указывает либо на конец команды (для первого уровня), либо на '.'
     user_index = parse_getnum(lvl1_index, user_command, user_index, number);
-    if (!user_index || !user_command[user_index]) return 0;
+
+    //Обрабатываем команду первого уровня, которая имеет передаваемый номер
+    if (lvl1_commands[lvl1_index].first_lvl_return_value)
+    {
+        if (user_index && !user_command[user_index])
+            return lvl1_commands[lvl1_index].first_lvl_return_value;
+        else
+            return 0;
+    }
+
+    if (!user_index || !user_command[user_index]) return 0; //Либо неудачный парсинг, либо не было передано команды второго уровня.
     user_index++;
+
     user_index = parse_lvl2(lvl1_index, &lvl2_index, user_command, user_index);
     if (!user_index) return 0;
     if (!lvl1_commands[lvl1_index].level2Commands[lvl2_index].has_value && !user_command[user_index])
         return lvl1_commands[lvl1_index].level2Commands[lvl2_index].return_value;
     if (!lvl1_commands[lvl1_index].level2Commands[lvl2_index].has_value && user_command)
         return 0;
-
-    if (!user_command[user_index]) return 0;
+    if (!user_command[user_index]) return 0; //Вторая строка закочнилась даже без '.', хотя должны передаваться цифры
     user_index++;
-    if (!user_command[user_index]) return 0;
+    if (!user_command[user_index]) return 0;  //После точки нет ничего, а должно быть (передаваемые цифры)
     uint8_t digits_num = parse_getval(user_command, user_index, value);
-    if (!digits_num) return 0; //Что-то пошло явно не так.
+    if (!digits_num) return 0; //Что-то пошло явно не так. Передали слишком много циферок.
     return 1;
 }
 
