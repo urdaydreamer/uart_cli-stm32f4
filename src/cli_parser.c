@@ -12,15 +12,13 @@
 
 #define DEBUG_LVL_1
 
-
-//TODO: для приема символов через UART будем использовать gap буффер/связный список.
-
 // Структура для хранения команды второго уровня и связанного с ней значения
 typedef struct {
     const char* command_lvl2;
     uint16_t has_value : 1;
     uint16_t return_value : 15;
 } Level2Command;
+
 
 
 // Структура для хранения команды первого уровня и массива команд второго уровня
@@ -30,68 +28,77 @@ typedef struct {
     uint8_t has_number : 1;
     uint8_t first_lvl_return_value : 6;
     uint8_t number_of_commands;
-    Level2Command* level2Commands;
+    const Level2Command* level2Commands;
 } Level1Command;
 
 
-static Level2Command ADC_COMMANDS[2] = {
-    {"setpsc",
-        HAS_VAL,
-        200
+
+// Команды второго уровня для ADC
+static const Level2Command ADC_COMMANDS[2] = {
+    {
+        .command_lvl2 = "setpsc",
+        .has_value = 1,
+        .return_value = 200
     },
-    {"getval",
-        NO_VAL,
-        201
+    {
+        .command_lvl2 = "getval",
+        .has_value = 0,
+        .return_value = 201
     }
 };
 
-static Level2Command TIMER_COMMANDS[2] = {
-    {"setpsc",
-        HAS_VAL,
-        300
+
+static const Level2Command TIMER_COMMANDS[2] = {
+    {   .command_lvl2 = "setpsc",
+        .has_value = HAS_VAL,
+        .return_value = 300
     },
-    {"getpsc",
-        NO_VAL,
-        301
+    {   .command_lvl2 = "getpsc",
+        .has_value = NO_VAL,
+        .return_value = 301
     }
 };
+
 
 
 
 // Глобальный массив команд первого уровня (инициализирован статически)
 static Level1Command lvl1_commands[MAX_LEVEL1_COMMANDS] = {
-    {   "adc",
-        NO_CHAR,
-        HAS_NUM,
-        NOT_FIRST_LVL,
-        2,
-        ADC_COMMANDS
+    {   .command_lvl1 = "adc",
+        .has_char = NO_CHAR,
+        .has_number = HAS_NUM,
+        .first_lvl_return_value = NOT_FIRST_LVL,
+        .number_of_commands = 2,
+        .level2Commands = ADC_COMMANDS
     },
     {
-        "timer",
-        NO_CHAR,
-        HAS_NUM,
-        NOT_FIRST_LVL,
-        2,
-        TIMER_COMMANDS
+        .command_lvl1 = "timer",
+        .has_char = NO_CHAR,
+        .has_number = HAS_NUM,
+        .first_lvl_return_value = NOT_FIRST_LVL,
+        .number_of_commands = 2,
+        .level2Commands = TIMER_COMMANDS
     },
-    {   "info",
-        NO_CHAR,
-        NO_NUM,
-        50,
-        0,
-        NULL
-    },
+    {   .command_lvl1 = "info",
+        .has_char = NO_CHAR,
+        .has_number = NO_NUM,
+        .first_lvl_return_value = 50,
+        .number_of_commands = 0,
+        .level2Commands = NULL
+    }, //Делаю
     {
-        "gpio",
-        HAS_CHAR,
-        NO_NUM,
-        NOT_FIRST_LVL,
-        0,
-        NULL
+        .command_lvl1 = "gpio",
+        .has_char = HAS_CHAR,
+        .has_number = NO_NUM,
+        .first_lvl_return_value = NOT_FIRST_LVL,
+        .number_of_commands = 0,
+        .level2Commands = NULL
     }
     // ... другие команды первого уровня
 };
+
+
+//Создаем динамически указатель на структуру и динамически статический менеджер этих датчиков. Делаем также два обработчика - для EXTI5-9 и нормального EXTI. В ините модуля добавляем новый датчик в менеджер датчиков, также включаем прерывание. Структра представляет из себя: trigger_pin, echo_pin, time_before_measure, time_after_measure, distance_before_calc, irqn_type
 
 
 
@@ -138,7 +145,7 @@ static uint16_t parse_lvl1(const char* user_command, uint16_t* lvl1_index)
 }
 
 
-uint16_t parse_getnum(uint16_t lvl1_index, const char* user_command, uint16_t user_index, uint8_t* number)
+static uint16_t parse_getnum(uint16_t lvl1_index, const char* user_command, uint16_t user_index, uint8_t* number)
 {
     uint16_t j = 0;
     if (lvl1_commands[lvl1_index].has_number || lvl1_commands[lvl1_index].has_char)
@@ -188,7 +195,7 @@ uint16_t parse_getnum(uint16_t lvl1_index, const char* user_command, uint16_t us
 }
 
 
-uint8_t parse_lvl2(uint16_t lvl1_index, uint8_t* lvl2_index, const char* user_command, uint16_t user_index)
+static uint8_t parse_lvl2(uint16_t lvl1_index, uint8_t* lvl2_index, const char* user_command, uint16_t user_index)
 {
     uint16_t j = 0;
     uint16_t i = 0;
@@ -226,7 +233,7 @@ uint8_t parse_lvl2(uint16_t lvl1_index, uint8_t* lvl2_index, const char* user_co
 }
 
 
-uint8_t parse_getval(const char* user_command, uint16_t user_index, uint16_t* value)
+static uint8_t parse_getval(const char* user_command, uint16_t user_index, uint16_t* value)
 {
     uint16_t i = 0;
     while (user_command[user_index + i])
@@ -276,7 +283,7 @@ uint8_t parse_getval(const char* user_command, uint16_t user_index, uint16_t* va
 }
 
 // Функция для парсинга команды
-int parse_command(const char* user_command, uint8_t* number, uint16_t* value)
+int cli_parse_command(const char* user_command, uint8_t* number, uint16_t* value)
 {
     uint16_t lvl1_index;
     uint8_t lvl2_index;
@@ -292,6 +299,7 @@ int parse_command(const char* user_command, uint8_t* number, uint16_t* value)
 
     if (lvl1_commands[lvl1_index].first_lvl_return_value && !user_command[user_index])
         return lvl1_commands[lvl1_index].first_lvl_return_value;
+    //TODO: сделать обработку первоуровневой команды с
     user_index = parse_getnum(lvl1_index, user_command, user_index, number);
     if (!user_index || !user_command[user_index]) return 0;
     user_index++;
@@ -318,7 +326,7 @@ int main()
     uint8_t tmp;
     char test[20];
     //scanf("%s", test);
-    printf("Result of parsing is %d\n", parse_command("info", &tmp, &tested));
+    printf("Result of parsing is %d\n", cli_parse_command("info", &tmp, &tested));
     printf("number = %d\nvalue = %d\n", tmp, tested);
     return 0;
 }
