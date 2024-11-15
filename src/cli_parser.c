@@ -90,7 +90,7 @@ static Level1Command lvl1_commands[MAX_LEVEL1_COMMANDS] = {
         .command_lvl1 = "gpio",
         .has_char = HAS_CHAR,
         .has_number = NO_NUM,
-        .first_lvl_return_value = NOT_FIRST_LVL,
+        .first_lvl_return_value = 55,
         .number_of_commands = 0,
         .level2Commands = NULL
     }
@@ -102,185 +102,93 @@ static Level1Command lvl1_commands[MAX_LEVEL1_COMMANDS] = {
 
 
 
+// Парсит команду первого уровня
 static uint16_t parse_lvl1(const char* user_command, uint16_t* lvl1_index)
 {
-    uint16_t user_index = 0;
-    uint8_t flag;
-    uint16_t j = 0;
-    uint16_t i = 0;
-    if (!(*user_command)) return 0;
+    if (!user_command[0]) return 0;
 
-    /* Ищем комманду первого уровня */
-
-    for (i = 0; i < MAX_LEVEL1_COMMANDS; i++)
+    for (uint16_t i = 0; i < MAX_LEVEL1_COMMANDS; i++)
     {
-        flag = 0;
-        user_index = 0;
-        j = 0;
-        //До тех пор, пока у нас не конец комманды пользователя и не конец комманды из таблицы
-        while(lvl1_commands[i].command_lvl1[j] && user_command[j] != '.' && user_command[j])
+        uint16_t j = 0;
+        while (lvl1_commands[i].command_lvl1[j] && user_command[j] != '.' && user_command[j])
         {
-            if(user_command[j] == lvl1_commands[i].command_lvl1[j]) //Если у нас совпадают символы
-            {
-                flag = 1;
-                user_index++;
-            }
-            else
-            {
-                flag = 0;
-                break;
-            }
+            if (user_command[j] != lvl1_commands[i].command_lvl1[j]) break;
             j++;
         }
-
-        if (flag && !lvl1_commands[i].command_lvl1[j] && (user_command[j] == '.' || !user_command[j]))
-            break;
-        else
-            flag = 0;
+        if (!lvl1_commands[i].command_lvl1[j] && (user_command[j] == '.' || !user_command[j]))
+        {
+            *lvl1_index = i;
+            return j + 1; // Возвращаем индекс символа после команды
+        }
     }
-    if (!flag) return 0;
-    *lvl1_index = i;
-    //Решение костыльное. Мы его используем, т.к. ошибка должна вернуть 0, то нулевой индекс должен отличаться от 0
-    return (user_index + 1);
+    return 0; // Команда не найдена
 }
 
-
+// Парсит число или символ после точки
 static uint16_t parse_getnum(uint16_t lvl1_index, const char* user_command, uint16_t user_index, uint8_t* number)
 {
-    uint16_t j = 0;
-    if (lvl1_commands[lvl1_index].has_number || lvl1_commands[lvl1_index].has_char)
-    {
-        if (!user_command[user_index]) return 0; //В комманду с передаваемым номером он не был передан/передан неверно
-        user_index++;   //Теперь user_command[user_index] ссылается на значение после точки
-        if (!user_command[user_index]) return 0; //После точки ничего не было передано
-        if (user_command[user_index] == '0') return 0;   //Передали в неправильном формате. 0 не может идти первым.
-        while(user_command[user_index] && user_command[user_index] != '.')
-        {
-            if (j > 1 && lvl1_commands[lvl1_index].has_number) return 0; //Передали слишком большое значение. Они у нас <= 99
-            if (j > 0 && lvl1_commands[lvl1_index].has_char) return 0;   //Передали больше, чем один символ
-            if (lvl1_commands[lvl1_index].has_number)
-            {
-                if (user_command[user_index] <= '9' && user_command[user_index] >= '0')
-                {
-                    switch (j)
-                    {
-                        case 0:
-                            *number += (user_command[user_index + 1] && user_command[user_index + 1] != '.')
-                            ? (user_command[user_index] - '0') * 10 : user_command[user_index] - '0';
-                            break;
-                        case 1:
-                            *number += (user_command[user_index] - '0');
-                            break;
-                    }
-                }
-                else
-                {
-                    return 0; //Передали не число
-                }
-            }
-            else if (lvl1_commands[lvl1_index].has_char)
-            {
-                *number = (user_command[user_index] >= 'a' && user_command[user_index] <= 'h')
-                ? user_command[user_index] : 0;
-                if (!(*number)) return 0;                   //Передали неверную букву
-            }
-            user_index++;
-            j++;
-            printf("%d\n", *number);
-        }
-        return user_index;
-        printf("Second part: user_index = %d\nuser_command[user_index] = %c\n", user_index, user_command[user_index]);
-    }
-    else
-        return 0;
-}
+    if (!(lvl1_commands[lvl1_index].has_number || lvl1_commands[lvl1_index].has_char)) return 0;
+    if (!user_command[user_index]) return 0; // Нет аргумента после команды
 
+    user_index++;
+    if (!user_command[user_index] || user_command[user_index] == '0') return 0;
 
-static uint8_t parse_lvl2(uint16_t lvl1_index, uint8_t* lvl2_index, const char* user_command, uint16_t user_index)
-{
     uint16_t j = 0;
-    uint16_t i = 0;
-    uint8_t flag = 0;
-    for (i = 0; i < lvl1_commands[lvl1_index].number_of_commands; i++)
+    while (user_command[user_index] && user_command[user_index] != '.')
     {
-        flag = 0;
-        *lvl2_index = i;
-        j = 0;
-        //До тех пор, пока у нас не конец комманды пользователя и не конец комманды из таблицы
-        while(lvl1_commands[lvl1_index].level2Commands[i].command_lvl2[j] &&
-            user_command[j + user_index] != '.' && user_command[j + user_index])
+        if ((j > 1 && lvl1_commands[lvl1_index].has_number) || (j > 0 && lvl1_commands[lvl1_index].has_char)) return 0;
+
+        if (lvl1_commands[lvl1_index].has_number)
         {
-            //Если у нас совпадают символы
-            if(user_command[j + user_index] == lvl1_commands[lvl1_index].level2Commands[i].command_lvl2[j])
-            {
-                flag = 1;
-            }
-            else
-            {
-                flag = 0;
-                break;
-            }
-            j++;
+            if (user_command[user_index] < '0' || user_command[user_index] > '9') return 0;
+            *number = *number * 10 + (user_command[user_index] - '0');
         }
-        if (flag && !lvl1_commands[lvl1_index].level2Commands[i].command_lvl2[j]
-            && (user_command[j + user_index] == '.' || !user_command[j + user_index]))
-            break;
-        else
-            flag = 0;
+        else if (lvl1_commands[lvl1_index].has_char)
+        {
+            if (user_command[user_index] < 'a' || user_command[user_index] > 'h') return 0;
+            *number = user_command[user_index];
+        }
+        user_index++;
+        j++;
     }
-    if (!flag) return 0;
-    user_index += j;
     return user_index;
 }
 
+// Парсит команду второго уровня
+static uint8_t parse_lvl2(uint16_t lvl1_index, uint8_t* lvl2_index, const char* user_command, uint16_t user_index)
+{
+    for (uint16_t i = 0; i < lvl1_commands[lvl1_index].number_of_commands; i++)
+    {
+        uint16_t j = 0;
+        while (lvl1_commands[lvl1_index].level2Commands[i].command_lvl2[j] &&
+            user_command[user_index + j] != '.' && user_command[user_index + j])
+        {
+            if (user_command[user_index + j] != lvl1_commands[lvl1_index].level2Commands[i].command_lvl2[j]) break;
+            j++;
+        }
+            if (!lvl1_commands[lvl1_index].level2Commands[i].command_lvl2[j] &&
+                (user_command[user_index + j] == '.' || !user_command[user_index + j]))
+            {
+                *lvl2_index = i;
+                return user_index + j;
+            }
+    }
+    return 0; // Команда второго уровня не найдена
+}
 
+// Парсит числовое значение после команды второго уровня
 static uint8_t parse_getval(const char* user_command, uint16_t user_index, uint16_t* value)
 {
     uint16_t i = 0;
+    *value = 0;
     while (user_command[user_index + i])
     {
-        if (user_command[user_index + i] < '0' && user_command[user_index + i] > '9')
-            return 0; //Отправили неверный символ
+        if (user_command[user_index + i] < '0' || user_command[user_index + i] > '9') return 0;
         i++;
-        if (i > 5)
-        {
-            printf("Было передано слишком большое значение\n");
-            return 0;
-        }
+        if (i > 5) return 0; // Слишком большое значение
+        *value = *value * 10 + (user_command[user_index + i - 1] - '0');
     }
-    printf("i = %d\n", i);
-
-    switch(i)
-    {
-        case 5:
-            printf("In 5th section\n");
-            *value = (user_command[user_index] - '0') * 10000 + (user_command[user_index + 1] - '0') * 1000
-            + (user_command[user_index + 2] - '0') * 100 + (user_command[user_index + 3] - '0') * 10
-            + (user_command[user_index + 4] - '0');
-            return i;
-            break;
-        case 4:
-            printf("In 4th section\n");
-            *value = (user_command[user_index] - '0') * 1000 + (user_command[user_index + 1] - '0') * 100
-            + (user_command[user_index + 2] - '0') * 10 + (user_command[user_index + 3] - '0');
-            return i;
-            break;
-        case 3:
-            printf("In 3trd section\n");
-            *value = (user_command[user_index] - '0') * 100 + (user_command[user_index + 1] - '0') * 10
-            + (user_command[user_index + 2] - '0');
-            return i;
-            break;
-        case 2:
-            *value = (user_command[user_index] - '0') * 10 + (user_command[user_index + 1] - '0');
-            return i;
-            break;
-        case 1:
-            *value = user_command[user_index] - '0';
-            return i;
-            break;
-    }
-    return 0;
+    return i;
 }
 
 // Функция для парсинга команды
@@ -288,70 +196,67 @@ int cli_parse_command(const char* user_command, uint8_t* number, uint16_t* value
 {
     uint16_t lvl1_index;
     uint8_t lvl2_index;
-    uint16_t user_index = 0;
-    uint8_t flag;
+    *number = 0; // Инициализируем number
+    *value = 0;   // Инициализируем value
 
-    /* Ищем комманду первого уровня */
-    user_index = parse_lvl1(user_command, &lvl1_index);
-    if (!user_index) return 0; //Неверная комманда первого уровня
-    user_index--;              //Функция парсинга возвращает индекс на 1 больше.
-    /* По итогу нашли user_index - место конца комманды / '.', а также lvl1_index - индекс первоуровневой комманды. */
+    uint16_t user_index = parse_lvl1(user_command, &lvl1_index);
+    if (!user_index)
+        return 0; // Неверная команда первого уровня
+    user_index--;
 
-
-    //Если команда первоуровневая
     if (lvl1_commands[lvl1_index].first_lvl_return_value)
     {
-        //Если команда не принимает номер
         if (!(lvl1_commands[lvl1_index].has_char || lvl1_commands[lvl1_index].has_number))
         {
-            //Если конец команды - все хорошо
-            if (!user_command[user_index])
-                return lvl1_commands[lvl1_index].first_lvl_return_value;
-            //Иначе - все плохо. Мы передали какие - то аргументы в команду, которая их не принимает
-            else
-                return 0;
+            if (!user_command[user_index]) return lvl1_commands[lvl1_index].first_lvl_return_value;
+            else return 0; // Аргументы переданы для команды, которая их не принимает
         }
     }
 
-
-    //Получаем значение индекса, который указывает либо на конец команды (для первого уровня), либо на '.'
     user_index = parse_getnum(lvl1_index, user_command, user_index, number);
-
-    //Обрабатываем команду первого уровня, которая имеет передаваемый номер
     if (lvl1_commands[lvl1_index].first_lvl_return_value)
     {
-        if (user_index && !user_command[user_index])
-            return lvl1_commands[lvl1_index].first_lvl_return_value;
-        else
-            return 0;
+        if (user_index && !user_command[user_index]) return lvl1_commands[lvl1_index].first_lvl_return_value;
+        else return 0; // Неверный аргумент для команды первого уровня/не был передан агрумент
     }
 
-    if (!user_index || !user_command[user_index]) return 0; //Либо неудачный парсинг, либо не было передано команды второго уровня.
+    if (!user_index || !user_command[user_index]) return 0; // Нет команды второго уровня
     user_index++;
 
     user_index = parse_lvl2(lvl1_index, &lvl2_index, user_command, user_index);
-    if (!user_index) return 0;
-    if (!lvl1_commands[lvl1_index].level2Commands[lvl2_index].has_value && !user_command[user_index])
-        return lvl1_commands[lvl1_index].level2Commands[lvl2_index].return_value;
-    if (!lvl1_commands[lvl1_index].level2Commands[lvl2_index].has_value && user_command)
-        return 0;
-    if (!user_command[user_index]) return 0; //Вторая строка закочнилась даже без '.', хотя должны передаваться цифры
+    if (!user_index) return 0; // Неверная команда второго уровня
+
+    if (!lvl1_commands[lvl1_index].level2Commands[lvl2_index].has_value)
+    {
+        if (!user_command[user_index]) return lvl1_commands[lvl1_index].level2Commands[lvl2_index].return_value;
+        else return 0; // Аргументы переданы для команды, которая их не принимает
+    }
+
+    if (!user_command[user_index]) return 0; // Нет значения после точки
     user_index++;
-    if (!user_command[user_index]) return 0;  //После точки нет ничего, а должно быть (передаваемые цифры)
-    uint8_t digits_num = parse_getval(user_command, user_index, value);
-    if (!digits_num) return 0; //Что-то пошло явно не так. Передали слишком много циферок.
-    return 1;
+
+    if (!parse_getval(user_command, user_index, value)) return 0; // Неверное значение
+    return lvl1_commands[lvl1_index].level2Commands[lvl2_index].return_value;
 }
 
-//CLI - интерпратор командной строки
-
+// CLI - интерпретатор командной строки
 int main()
 {
     uint16_t tested;
     uint8_t tmp;
-    char test[20];
-    //scanf("%s", test);
-    printf("Result of parsing is %d\n", cli_parse_command("info", &tmp, &tested));
+    printf("Result of parsing is %d\n", cli_parse_command("info.1", &tmp, &tested));
     printf("number = %d\nvalue = %d\n", tmp, tested);
+
+    printf("Result of parsing is %d\n", cli_parse_command("adc.99.setpsc.1223", &tmp, &tested));
+    printf("number = %d\nvalue = %d\n", tmp, tested);
+
+    printf("Result of parsing is %d\n", cli_parse_command("timer.1.getpsc", &tmp, &tested));
+    printf("number = %d\nvalue = %d\n", tmp, tested);
+
+    printf("Result of parsing is %d\n", cli_parse_command("gpio.f", &tmp, &tested));
+    printf("number = %c\nvalue = %d\n", tmp, tested);
+
     return 0;
+
+    //TODO: Убрать лишние проверки из parse_getnum
 }
