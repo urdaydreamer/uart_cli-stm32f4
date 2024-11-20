@@ -1,14 +1,22 @@
 #ifndef _USART_H_
 #define _USART_H_
 #include "stm32f407xx.h"
-#define _BUFFER_LEN 255
-#define _CLI_SERIAL USART3
-#define _CLI_SERIAL_IRQn USART3_IRQn
-#define _CLI_SERIAL_IRQHandler USART3_IRQHandler
-#define _CLI_IS_CTRL(c) ((c) <= 31)
+/* Depends on HARDWARE start */
+#define _CLI_SERIAL               USART3
+#define _CLI_SERIAL_IRQn          USART3_IRQn
+#define _CLI_SERIAL_IRQHandler    USART3_IRQHandler
+#define _CLI_IRQ_RX_ON            (_CLI_SERIAL->CR1 |= USART_CR1_RXNEIE)
+#define _CLI_IRQ_RX_OFF           (_CLI_SERIAL->CR1 &= ~USART_CR1_RXNEIE)
+#define _CLI_IRQ_TX_ON            (_CLI_SERIAL->CR1 |= ~USART_CR1_TXEIE)
+#define _CLI_IRQ_TX_OFF           (_CLI_SERIAL->CR1 &= ~USART_CR1_TXEIE)
+#define _CLI_SERIAL_DR            (_CLI_SERIAL->DR)
+/* Depends on HARDWARE end */
+
+#define _CLI_IS_CTRL(c)           ((c) <= 31)
+#define _BUFFER_LEN               255
 
 typedef enum
-{
+{   OVERFLOW,
     RX,
     TRANSMITTING,
     ENTER,
@@ -19,7 +27,7 @@ typedef enum
 typedef struct
 {
     //IRQn_Type;
-    uint8_t buffer[_BUFFER_LEN];
+    char buffer[_BUFFER_LEN];
     uint8_t cursor;
     uint8_t current_len;
     const char* print_buf;
@@ -30,5 +38,7 @@ typedef struct
 
 
 void cli_begin(uint32_t baud_rate);
+void _CLI_SERIAL_IRQHandler(void);
 #endif
+
 
