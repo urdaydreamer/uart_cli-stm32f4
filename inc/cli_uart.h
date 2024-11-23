@@ -1,10 +1,15 @@
 #ifndef _USART_H_
 #define _USART_H_
 #include "stm32f407xx.h"
+
 /* Depends on HARDWARE start */
 #define _CLI_SERIAL               USART3
 #define _CLI_SERIAL_IRQn          USART3_IRQn
 #define _CLI_SERIAL_IRQHandler    USART3_IRQHandler
+#define _CLI_RX_ON                (_CLI_SERIAL->CR1 |= USART_CR1_RE)
+#define _CLI_RX_OFF               (_CLI_SERIAL->CR1 &= ~USART_CR1_RE)
+#define _CLI_TX_ON                (_CLI_SERIAL->CR1 |= USART_CR1_TE)
+#define _CLI_TX_OFF               (_CLI_SERIAL->CR1 &= ~USART_CR1_TE)
 #define _CLI_IRQ_RX_ON            (_CLI_SERIAL->CR1 |= USART_CR1_RXNEIE)
 #define _CLI_IRQ_RX_OFF           (_CLI_SERIAL->CR1 &= ~USART_CR1_RXNEIE)
 #define _CLI_IRQ_TX_ON            (_CLI_SERIAL->CR1 |= ~USART_CR1_TXEIE)
@@ -16,10 +21,10 @@
 #define _BUFFER_LEN               255
 
 typedef enum
-{   OVERFLOW,
+{   KB_IRQ,
+    OVERFLOW,
     RX,
     TRANSMITTING,
-    ENTER,
     PARSING
 } cli_status_t;
 
@@ -33,12 +38,14 @@ typedef struct
     const char* print_buf;
     uint16_t print_cnt;
     cli_status_t status;
-    uint8_t rdy_for_parse;
+    uint8_t rdy_for_parse : 1;
+    uint8_t is_waiting_esc : 1;
+    uint8_t ctrl_counter : 6;
+    uint8_t ctrl_buf[4];
 } cli_t;
 
 
 void cli_begin(uint32_t baud_rate);
 void _CLI_SERIAL_IRQHandler(void);
 #endif
-
 
