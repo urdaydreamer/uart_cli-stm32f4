@@ -33,19 +33,17 @@ typedef struct
 {
     //IRQn_Type;
     char buffer[_BUFFER_LEN];
-    uint8_t cursor;
-    uint8_t current_len;
+    __IO uint16_t cursor;
+    __IO uint16_t current_len;
     const char* print_buf;
-    uint16_t print_cnt;
-    cli_status_t status;
-    uint8_t rdy_for_parse : 1;
-    uint8_t is_waiting_esc : 1;
-    uint8_t ctrl_counter : 6;
-    uint8_t ctrl_buf[4];
+    __IO uint16_t print_cnt;
+    __IO cli_status_t status;
+    __IO uint8_t rdy_for_parse : 1;
+    __IO uint8_t is_waiting_esc : 1;
+    __IO uint8_t ctrl_counter : 6;
 } cli_t;
 
 
 void cli_begin(uint32_t baud_rate);
 void _CLI_SERIAL_IRQHandler(void);
 #endif
-
