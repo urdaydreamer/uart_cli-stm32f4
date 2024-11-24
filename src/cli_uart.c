@@ -5,7 +5,7 @@ static uint32_t cli_getfreq(void);
 static uint8_t cli_getAPB1_div(void);
 static void cli_rcc_init(void);
 static void cli_uart_init(uint32_t baud_rate);
-static void cli_print(const char*);
+static void cli_print(const char* const);
 static void cli_init(void);
 static void cli_ctrl_handler(char c);
 static void cli_movebuf_right(void);
@@ -13,7 +13,7 @@ static void cli_movebuf_left(void);
 static void cli_putchar(char c);
 static void cli_overflow_handler(void);
 static void cli_check_esc(char c);
-static __IO cli_t cli;
+static cli_t cli;
 
 
 
@@ -31,12 +31,12 @@ static void cli_rcc_init(void)
 
 static uint32_t cli_getfreq(void)
 {
-
+    return 1;
 }
 
 static uint8_t cli_getAPB1_div(void)
 {
-
+    return 1;
 }
 
 
@@ -57,7 +57,6 @@ static void cli_uart_init(uint32_t baud_rate)
 
 static void cli_init(void)
 {
-    //memset(cli.buffer, 0, _BUFFER_LEN); - Нет смысла делать memset, даже если там лежит мусор. Мы все равно закончим строку 0, отправив Ентер
     cli.cursor = 0;
     cli.current_len = 0;
     cli.rdy_for_parse = 0;
@@ -68,7 +67,7 @@ static void cli_init(void)
 }
 
 
-static void cli_print(const char* data)
+static void cli_print(const char* const data)
 {
     //Отключаем любой прием символов на время отправки в консоль
     _CLI_RX_OFF;
@@ -117,7 +116,6 @@ static void cli_print_handler(void)
             //Нам нет смысла очищать буффер, потому что команда в любом случае будет оканчиваться '0'
             cli.cursor = 0;
             cli.current_len = 0;
-            cli.status = RX;
             cli.rdy_for_parse = 0;
             cli.print_buf = NULL;
             cli.print_cnt = 0;
@@ -135,9 +133,8 @@ static void cli_print_handler(void)
 static void cli_movebuf_right(void)
 {
     uint8_t move_len = cli.current_len - cli.cursor;
-    for (uint8_t i = 0; i < move_len; i++)
-    {
-        cli.buffer[cli.current_len - i] = cli.buffer[cli.current_len - 1 - i];
+    if (move_len > 0) {
+        memmove(&cli.buffer[cli.cursor + 1], &cli.buffer[cli.cursor], move_len);
     }
 }
 
@@ -149,13 +146,12 @@ static uint8_t cli_getstat(void)
 
 static void cli_movebuf_left(void)
 {
-    for (uint8_t i = cli.cursor; i < cli.current_len; i++)
-    {
-        cli.buffer[i] = cli.buffer[i + 1];
+    uint8_t move_len = cli.current_len - cli.cursor - 1;
+    if (move_len > 0) {
+        memmove(&cli.buffer[cli.cursor], &cli.buffer[cli.cursor + 1], move_len);
     }
 }
 
-//
 static void cli_putchar(char c)
 {
     if (cli.current_len + 1 > _BUFFER_LEN)
@@ -170,15 +166,92 @@ static void cli_putchar(char c)
     _CLI_SERIAL_DR = c;
 }
 
+//TODO: Разобраться при отладке, какая все же ESC последовательность используется для HOME и END
 static void cli_check_esc(char c)
 {
-    cli.ctrl_buf[cli.ctrl_counter] = c;
+    switch(c)
+    {
+        case '[':
+            if (!cli.ctrl_counter)
+            {
+                cli.ctrl_counter++;
+            }
+            else
+            {
+                cli.is_waiting_esc = 0;
+                cli.ctrl_counter = 0;
+                cli_print(" This is not ESC sequence\r\n");
+            }
+            break;
+        case 'C': //Right Arrow
+            cli.is_waiting_esc = 0;
+            cli.ctrl_counter = 0;
+            if (cli.ctrl_counter == 1)
+            {
+                if (cli.cursor < cli.current_len)
+                {
+                    cli.cursor++;
+                    cli_print("\033[C");
+                }
+            }
+            else
+            {
+                cli_print(" This ESC sequence is not in handler\n\r");
+            }
+            break;
+        case 'D': //Left arrow
+            cli.is_waiting_esc = 0;
+            cli.ctrl_counter = 0;
+            if (cli.ctrl_counter == 1)
+            {
+                if (cli.cursor)
+                {
+                    cli.cursor--;
+                    cli_print("\033[D");
+                }
+            }
+            else
+            {
+                cli_print(" This ESC sequence is not in handler\n\r");
+            }
+            break;
+        case 'H': //HOME key
+            cli.is_waiting_esc = 0;
+            cli.ctrl_counter = 0;
+            if (cli.ctrl_counter == 1)
+            {
+                cli.cursor = 0;
+                cli_print("\033[G");
+            }
+            else
+            {
+                cli_print(" This ESC sequence is not in handler\n\r");
+            }
+            break;
+        case 'F': //END key
+            cli.is_waiting_esc = 0;
+            cli.ctrl_counter = 0;
+            if (cli.ctrl_counter == 1)
+            {
+                cli.cursor = cli.current_len;
+                cli_print("\033[F");
+            }
+            else
+            {
+                cli_print(" This ESC sequence is not in handler\n\r");
+            }
+            break;
 
-    //TODO: дописать поиск ESC последовательности. В первую очередь сделать поиск ARROWS и HOME/END
+
+        default:
+            cli_print(" This ESC sequence is not in handler\n\r");
+            break;
+    }
+
 }
 
-//Стрелочки и home/end отправляются через последовательность с начальным контрольным значением 27. Нужно принимать
-//TODO: дописать
+
+
 static void cli_ctrl_handler(char c)
 {
     switch(c)
@@ -189,16 +262,18 @@ static void cli_ctrl_handler(char c)
             _CLI_RX_OFF;
             _CLI_IRQ_RX_OFF;
             break;
-
+        case KEY_ENQ:
+            cli.cursor = 0;
+            cli_print("\r");
         case KEY_BS: /**< ^H Backspace, works on HP terminals/computers */
-            if (cli.cursor == 0) break;
+            if (!cli.cursor) break;
             cli.cursor--;
         cli_movebuf_left();
         cli.current_len--;
         _CLI_SERIAL_DR = c;
         break;
         case KEY_DEL: /**< DEL/BS  */
-            if (cli.cursor == 0) break;
+            if (!cli.cursor) break;
             cli.cursor--;
         cli_movebuf_left();
         cli.current_len--;
@@ -247,4 +322,9 @@ void _CLI_SERIAL_IRQHandler(void)
 
 }
 
+
+
+
+
 //TODO: в cli_handle() будем обрабатывать overflow/parsing.
+
